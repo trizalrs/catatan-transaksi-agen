@@ -19,6 +19,7 @@
     <!-- ====================================================== -->
     <!-- ==> KODE UNTUK LOGO APLIKASI (SELESAI DI SINI) <== -->
     <!-- ====================================================== -->
+
     <!-- Memuat Tailwind CSS melalui CDN untuk styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Memuat library ikon untuk visual yang lebih baik -->
@@ -82,6 +83,7 @@
                                     <option value="flow">Aliran Dana (Transfer/Tarik)</option>
                                     <option value="sale">Penjualan Produk & Tagihan</option>
                                     <option value="internal">Transfer Antar Akun</option>
+                                    <option value="adjustment">Penyesuaian Saldo</option>
                                 </select>
                             </div>
                             <div>
@@ -150,6 +152,22 @@
                             <div>
                                 <label for="amount-internal" class="block text-sm font-medium text-slate-600 mb-1">Jumlah Transfer (Rp)</label>
                                 <input type="number" id="amount-internal" placeholder="1000000" class="w-full p-3 border border-slate-300 rounded-lg">
+                            </div>
+                        </div>
+
+                        <!-- Form untuk Penyesuaian Saldo -->
+                        <div id="form-adjustment" class="form-section grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                            <div>
+                                <label for="account-adjustment" class="block text-sm font-medium text-slate-600 mb-1">Pilih Akun</label>
+                                <select id="account-adjustment" class="w-full p-3 border border-slate-300 rounded-lg"></select>
+                            </div>
+                             <div>
+                                <label for="amount-adjustment" class="block text-sm font-medium text-slate-600 mb-1">Jumlah (Rp)</label>
+                                <input type="number" id="amount-adjustment" placeholder="50000" class="w-full p-3 border border-slate-300 rounded-lg">
+                            </div>
+                            <div>
+                                <label for="description-adjustment" class="block text-sm font-medium text-slate-600 mb-1">Keterangan</label>
+                                <input type="text" id="description-adjustment" placeholder="Pinjam uang pribadi" class="w-full p-3 border border-slate-300 rounded-lg">
                             </div>
                         </div>
 
@@ -287,7 +305,8 @@
             const subCategoryOptions = {
                 'flow': ['Transfer Uang', 'Tarik Tunai'],
                 'sale': ['Topup E-Wallet', 'Topup Pulsa', 'Topup Game', 'Token Listrik', 'Bayar BPJS', 'Bayar Internet'],
-                'internal': ['Transfer Antar Akun']
+                'internal': ['Transfer Antar Akun'],
+                'adjustment': ['Tambah Saldo', 'Kurangi Saldo']
             };
 
             // --- FUNGSI INISIALISASI DATABASE ---
@@ -390,7 +409,7 @@
             };
             
             const populateAccountSelects = () => {
-                const selects = document.querySelectorAll('select[id*="source-account"], select[id*="destination-account"]');
+                const selects = document.querySelectorAll('select[id*="account"]');
                 selects.forEach(select => {
                     select.innerHTML = '';
                     for (const [key, value] of Object.entries(ACCOUNTS)) {
@@ -450,6 +469,12 @@
                     } else if (tx.category === 'internal') {
                         currentBalances[tx.source] -= tx.amount;
                         currentBalances[tx.destination] += tx.amount;
+                    } else if (tx.category === 'adjustment') {
+                        if (tx.subCategory === 'Tambah Saldo') {
+                            currentBalances[tx.account] += tx.amount;
+                        } else { // Kurangi Saldo
+                            currentBalances[tx.account] -= tx.amount;
+                        }
                     }
                 });
                 
@@ -494,7 +519,7 @@
                 } else {
                     filtered.slice().reverse().forEach(tx => {
                         const row = document.createElement('tr');
-                        let detail = tx.customer || '';
+                        let detail = tx.customer || tx.description || '';
                         let nominalDisplay = formatCurrency(tx.amount);
                         
                         if (tx.category === 'sale') {
@@ -506,6 +531,9 @@
                             detail = `${tx.customer} (Tunai -> ${ACCOUNTS[tx.destination]})`;
                         } else if (tx.category === 'internal') {
                             detail = `${ACCOUNTS[tx.source]} -> ${ACCOUNTS[tx.destination]}`;
+                        } else if (tx.category === 'adjustment') {
+                            detail = `${tx.description} (${ACCOUNTS[tx.account]})`;
+                            row.classList.add('bg-yellow-50');
                         }
 
                         row.innerHTML = `
@@ -607,6 +635,12 @@
                     const destination = document.getElementById('destination-account-internal').value;
                     if (isNaN(amount) || amount <= 0 || source === destination) { alert('Isi data transfer dengan benar dan pastikan akun tidak sama.'); return; }
                     Object.assign(newTransaction, { amount, source, destination });
+                } else if (category === 'adjustment') {
+                    const amount = parseInt(document.getElementById('amount-adjustment').value);
+                    const account = document.getElementById('account-adjustment').value;
+                    const description = document.getElementById('description-adjustment').value.trim();
+                    if (isNaN(amount) || amount <= 0 || !description) { alert('Isi semua kolom penyesuaian saldo.'); return; }
+                    Object.assign(newTransaction, { amount, account, description });
                 }
 
                 await saveData(TX_STORE_NAME, newTransaction);
@@ -674,7 +708,7 @@
                 const tableRows = [];
 
                 filteredData.slice().reverse().forEach(tx => {
-                    let detail = tx.customer || '';
+                    let detail = tx.customer || tx.description || '';
                     let nominalDisplay = formatCurrency(tx.amount);
                     if (tx.category === 'sale') {
                         nominalDisplay = `${formatCurrency(tx.amount)} -> ${formatCurrency(tx.sellPrice)}`;
@@ -685,6 +719,8 @@
                         detail = `${tx.customer} (Tunai -> ${ACCOUNTS[tx.destination]})`;
                     } else if (tx.category === 'internal') {
                         detail = `${ACCOUNTS[tx.source]} -> ${ACCOUNTS[tx.destination]}`;
+                    } else if (tx.category === 'adjustment') {
+                        detail = `${tx.description} (${ACCOUNTS[tx.account]})`;
                     }
                     
                     const txData = [
