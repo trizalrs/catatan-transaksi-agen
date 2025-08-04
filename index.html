@@ -31,7 +31,7 @@
 
         <!-- Header Aplikasi -->
         <header class="text-center mb-8">
-            <h1 class="text-3xl sm:text-4xl font-bold text-slate-800">Catatan Transaksi <br> = NPAR Media =</h1>
+            <h1 class="text-3xl sm:text-4xl font-bold text-slate-800">Catatan Transaksi Agen</h1>
             <p id="page-title" class="text-slate-500 mt-2">Dashboard</p>
         </header>
 
@@ -305,6 +305,14 @@
                 cash: 'Uang Tunai (Kas)'
             };
 
+            const ACCOUNT_COLORS = {
+                bri: { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200' },
+                seabank: { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-200' },
+                dana: { bg: 'bg-indigo-50', text: 'text-indigo-800', border: 'border-indigo-200' },
+                shopee: { bg: 'bg-orange-50', text: 'text-orange-800', border: 'border-orange-200' },
+                cash: { bg: 'bg-green-50', text: 'text-green-800', border: 'border-green-200' }
+            };
+
             const subCategoryOptions = {
                 'flow': ['Transfer Uang', 'Tarik Tunai'],
                 'sale': ['Topup E-Wallet', 'Topup Pulsa', 'Topup Game', 'Token Listrik', 'Bayar BPJS', 'Bayar Internet'],
@@ -491,10 +499,11 @@
                 const container = document.getElementById('current-balances-container');
                 container.innerHTML = '';
                 for (const [key, name] of Object.entries(ACCOUNTS)) {
+                    const colors = ACCOUNT_COLORS[key];
                     container.innerHTML += `
-                        <div class="bg-white p-6 rounded-2xl shadow-lg">
-                            <h3 class="text-lg font-medium text-slate-700 flex items-center justify-center">${name}</h3>
-                            <p class="text-3xl font-bold text-slate-900 mt-2">${formatCurrency(currentBalances[key] || 0)}</p>
+                        <div class="p-6 rounded-2xl shadow-lg border ${colors.border} ${colors.bg}">
+                            <h3 class="text-lg font-medium ${colors.text} flex items-center justify-center">${name}</h3>
+                            <p class="text-3xl font-bold ${colors.text} mt-2">${formatCurrency(currentBalances[key] || 0)}</p>
                         </div>
                     `;
                 }
