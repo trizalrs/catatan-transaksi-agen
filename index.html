@@ -4,22 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aplikasi Pencatatan Transaksi Agen</title>
-    <!-- ====================================================== -->
-    <!-- ==> KODE UNTUK LOGO APLIKASI (MULAI DARI SINI) <== -->
-    <!-- ====================================================== -->
-
-    <!-- (WAJIB) Ikon untuk Layar Utama HP (Apple, Android, dll) -->
-    <!-- Ganti "logo.png" dengan nama file logo Anda -->
-    <link rel="apple-touch-icon" href="logo.jpg">
-
-    <!-- (Opsional) Ikon untuk tab browser (Favicon) -->
-    <!-- Ganti "logo.png" dengan nama file logo Anda -->
-    <link rel="icon" href="logo.jpg">
-
-    <!-- ====================================================== -->
-    <!-- ==> KODE UNTUK LOGO APLIKASI (SELESAI DI SINI) <== -->
-    <!-- ====================================================== -->
-
     <!-- Memuat Tailwind CSS melalui CDN untuk styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Memuat library ikon untuk visual yang lebih baik -->
@@ -437,46 +421,51 @@
             const deleteData = (store, key) => dbAction(store, 'readwrite', (objStore, res) => { objStore.delete(key).onsuccess = res; });
             const clearData = (store) => dbAction(store, 'readwrite', (objStore, res) => { objStore.clear().onsuccess = res; });
 
-            // --- FUNGSI RENDER ---
-            async function renderDashboard() {
-                const today = new Date().toISOString().split('T')[0];
-                const initialData = await getData(BALANCE_STORE_NAME, today);
+            // --- FUNGSI RENDER & KALKULASI ---
+            async function calculateFinalBalances(dateString) {
+                const initialData = await getData(BALANCE_STORE_NAME, dateString);
                 const initialBalances = initialData ? initialData.balances : {};
-                
-                let currentBalances = {};
+
+                let finalBalances = {};
                 for (const key in ACCOUNTS) {
-                    currentBalances[key] = initialBalances[key] || 0;
+                    finalBalances[key] = initialBalances[key] || 0;
                 }
 
                 const allTransactions = await getAllData(TX_STORE_NAME);
-                const todayTransactions = allTransactions.filter(tx => tx.date.startsWith(today));
+                const dayTransactions = allTransactions.filter(tx => tx.date.startsWith(dateString));
 
-                todayTransactions.forEach(tx => {
+                dayTransactions.forEach(tx => {
                     if (tx.subCategory === 'Transfer Uang') {
-                        currentBalances[tx.source] -= tx.amount;
-                        currentBalances.cash += tx.amount + tx.profit;
+                        finalBalances[tx.source] -= tx.amount;
+                        finalBalances.cash += tx.amount + tx.profit;
                     } else if (tx.subCategory === 'Tarik Tunai') {
-                        currentBalances.cash -= tx.amount;
+                        finalBalances.cash -= tx.amount;
                         if (tx.adminFeeMethod === 'cash') {
-                            currentBalances.cash += tx.profit;
-                            currentBalances[tx.destination] += tx.amount;
+                            finalBalances.cash += tx.profit;
+                            finalBalances[tx.destination] += tx.amount;
                         } else {
-                            currentBalances[tx.destination] += tx.amount + tx.profit;
+                            finalBalances[tx.destination] += tx.amount + tx.profit;
                         }
                     } else if (tx.category === 'sale') {
-                        currentBalances[tx.source] -= tx.amount;
-                        currentBalances.cash += tx.sellPrice;
+                        finalBalances[tx.source] -= tx.amount;
+                        finalBalances.cash += tx.sellPrice;
                     } else if (tx.category === 'internal') {
-                        currentBalances[tx.source] -= tx.amount;
-                        currentBalances[tx.destination] += tx.amount;
+                        finalBalances[tx.source] -= tx.amount;
+                        finalBalances[tx.destination] += tx.amount;
                     } else if (tx.category === 'adjustment') {
                         if (tx.subCategory === 'Tambah Saldo') {
-                            currentBalances[tx.account] += tx.amount;
+                            finalBalances[tx.account] += tx.amount;
                         } else { // Kurangi Saldo
-                            currentBalances[tx.account] -= tx.amount;
+                            finalBalances[tx.account] -= tx.amount;
                         }
                     }
                 });
+                return finalBalances;
+            }
+
+            async function renderDashboard() {
+                const todayString = new Date().toISOString().split('T')[0];
+                const currentBalances = await calculateFinalBalances(todayString);
                 
                 const container = document.getElementById('current-balances-container');
                 container.innerHTML = '';
@@ -554,27 +543,45 @@
             }
             
             async function checkInitialBalance() {
-                const today = new Date().toISOString().split('T')[0];
-                const initialData = await getData(BALANCE_STORE_NAME, today);
+                const today = new Date();
+                const todayString = today.toISOString().split('T')[0];
                 const formContainer = document.getElementById('initial-balances-form');
-                formContainer.innerHTML = '';
+                
+                const todayInitialData = await getData(BALANCE_STORE_NAME, todayString);
 
-                for (const [key, name] of Object.entries(ACCOUNTS)) {
-                    const value = initialData ? (initialData.balances[key] || 0) : '';
-                    formContainer.innerHTML += `
-                        <div>
-                            <label for="initial-${key}" class="block text-sm font-medium text-slate-600 mb-1">${name}</label>
-                            <input type="number" id="initial-${key}" data-account-key="${key}" value="${value}" placeholder="0" class="initial-balance-input w-full p-3 border border-slate-300 rounded-lg">
-                        </div>
-                    `;
-                }
-
-                if (initialData) {
-                    document.querySelectorAll('.initial-balance-input').forEach(input => input.disabled = true);
+                if (todayInitialData) {
+                    // Saldo hari ini sudah di-set, kunci form
+                    formContainer.innerHTML = '';
+                    for (const [key, name] of Object.entries(ACCOUNTS)) {
+                        const value = todayInitialData.balances[key] || 0;
+                        formContainer.innerHTML += `<div><label class="block text-sm font-medium text-slate-600 mb-1">${name}</label><input type="number" value="${value}" class="w-full p-3 border rounded-lg" disabled></div>`;
+                    }
                     saveInitialBalanceBtn.disabled = true;
                     saveInitialBalanceBtn.innerHTML = `<i class="fa-solid fa-lock mr-2"></i> Saldo Terkunci`;
                     saveInitialBalanceBtn.classList.replace('bg-indigo-600', 'bg-slate-400');
                     saveInitialBalanceBtn.classList.remove('hover:bg-indigo-700');
+                } else {
+                    // Saldo hari ini belum di-set, coba ambil dari hari kemarin
+                    const yesterday = new Date(today);
+                    yesterday.setDate(today.getDate() - 1);
+                    const yesterdayString = yesterday.toISOString().split('T')[0];
+
+                    const yesterdayFinalBalances = await calculateFinalBalances(yesterdayString);
+                    
+                    formContainer.innerHTML = '';
+                    for (const [key, name] of Object.entries(ACCOUNTS)) {
+                        const value = yesterdayFinalBalances[key] || 0;
+                        formContainer.innerHTML += `
+                            <div>
+                                <label for="initial-${key}" class="block text-sm font-medium text-slate-600 mb-1">${name}</label>
+                                <input type="number" id="initial-${key}" data-account-key="${key}" value="${value}" placeholder="0" class="initial-balance-input w-full p-3 border border-slate-300 rounded-lg">
+                            </div>
+                        `;
+                    }
+                    saveInitialBalanceBtn.disabled = false;
+                    saveInitialBalanceBtn.innerHTML = `<i class="fa-solid fa-floppy-disk mr-2"></i> Atur & Kunci Saldo`;
+                    saveInitialBalanceBtn.classList.add('bg-indigo-600', 'hover:bg-indigo-700');
+                    saveInitialBalanceBtn.classList.remove('bg-slate-400');
                 }
             }
 
