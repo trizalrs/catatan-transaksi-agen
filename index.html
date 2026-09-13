@@ -378,6 +378,7 @@
             // --- FUNGSI PEMBANTU ---
             const formatCurrency = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
             const calculateAdminFee = (amount) => {
+                if (amount < 50000) return 3000;
                 if (amount <= 600000) return 5000;
                 if (amount <= 1000000) return 7000;
                 return 10000;
