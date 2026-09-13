@@ -491,44 +491,72 @@
             };
 
             // --- FUNGSI RENDER & KALKULASI ---
-            async function calculateFinalBalances(dateString) {
-                const initialData = await getData(BALANCE_STORE_NAME, dateString);
-                const initialBalances = initialData ? initialData.balances : {};
+            const applyTransactionToBalances = (balances, tx) => {
+                    if (tx.subCategory === 'Transfer Uang') {
+                        balances[tx.source] -= tx.amount;
+                        balances.cash += tx.amount + tx.profit;
+                    } else if (tx.subCategory === 'Tarik Tunai') {
+                        balances.cash -= tx.amount;
+                        if (tx.adminFeeMethod === 'cash') {
+                            balances.cash += tx.profit;
+                            balances[tx.destination] += tx.amount;
+                        } else {
+                            balances[tx.destination] += tx.amount + tx.profit;
+                        }
+                    } else if (tx.category === 'sale') {
+                        balances[tx.source] -= tx.amount;
+                        balances.cash += tx.sellPrice;
+                    } else if (tx.category === 'internal') {
+                        balances[tx.source] -= tx.amount;
+                        balances[tx.destination] += tx.amount;
+                    } else if (tx.category === 'adjustment') {
+                        if (tx.subCategory === 'Tambah Saldo') {
+                            balances[tx.account] += tx.amount;
+                        } else { // Kurangi Saldo
+                            balances[tx.account] -= tx.amount;
+                        }
+                    }
+            };
 
-                let finalBalances = {};
-                for (const key in ACCOUNTS) {
-                    finalBalances[key] = initialBalances[key] || 0;
+            async function calculateOpeningBalances(dateString) {
+                const balanceSnapshots = await getAllData(BALANCE_STORE_NAME);
+                const exactSnapshot = balanceSnapshots.find(snapshot => snapshot.date === dateString);
+                if (exactSnapshot) {
+                    const openingBalances = {};
+                    for (const key in ACCOUNTS) {
+                        openingBalances[key] = exactSnapshot.balances[key] || 0;
+                    }
+                    return openingBalances;
                 }
 
+                const latestSnapshot = balanceSnapshots
+                    .filter(snapshot => snapshot.date < dateString)
+                    .sort((first, second) => second.date.localeCompare(first.date))[0];
+
+                const openingBalances = {};
+                for (const key in ACCOUNTS) {
+                    openingBalances[key] = latestSnapshot ? latestSnapshot.balances[key] || 0 : 0;
+                }
+
+                if (!latestSnapshot) return openingBalances;
+
+                const allTransactions = await getAllData(TX_STORE_NAME);
+                allTransactions
+                    .filter(tx => {
+                        const transactionDate = tx.date.split('T')[0];
+                        return transactionDate >= latestSnapshot.date && transactionDate < dateString;
+                    })
+                    .forEach(tx => applyTransactionToBalances(openingBalances, tx));
+
+                return openingBalances;
+            }
+
+            async function calculateFinalBalances(dateString) {
+                const finalBalances = await calculateOpeningBalances(dateString);
                 const allTransactions = await getAllData(TX_STORE_NAME);
                 const dayTransactions = allTransactions.filter(tx => tx.date.startsWith(dateString));
 
-                dayTransactions.forEach(tx => {
-                    if (tx.subCategory === 'Transfer Uang') {
-                        finalBalances[tx.source] -= tx.amount;
-                        finalBalances.cash += tx.amount + tx.profit;
-                    } else if (tx.subCategory === 'Tarik Tunai') {
-                        finalBalances.cash -= tx.amount;
-                        if (tx.adminFeeMethod === 'cash') {
-                            finalBalances.cash += tx.profit;
-                            finalBalances[tx.destination] += tx.amount;
-                        } else {
-                            finalBalances[tx.destination] += tx.amount + tx.profit;
-                        }
-                    } else if (tx.category === 'sale') {
-                        finalBalances[tx.source] -= tx.amount;
-                        finalBalances.cash += tx.sellPrice;
-                    } else if (tx.category === 'internal') {
-                        finalBalances[tx.source] -= tx.amount;
-                        finalBalances[tx.destination] += tx.amount;
-                    } else if (tx.category === 'adjustment') {
-                        if (tx.subCategory === 'Tambah Saldo') {
-                            finalBalances[tx.account] += tx.amount;
-                        } else { // Kurangi Saldo
-                            finalBalances[tx.account] -= tx.amount;
-                        }
-                    }
-                });
+                dayTransactions.forEach(tx => applyTransactionToBalances(finalBalances, tx));
                 return finalBalances;
             }
 
@@ -631,16 +659,12 @@
                     saveInitialBalanceBtn.classList.replace('bg-indigo-600', 'bg-slate-400');
                     saveInitialBalanceBtn.classList.remove('hover:bg-indigo-700');
                 } else {
-                    // Saldo hari ini belum di-set, coba ambil dari hari kemarin
-                    const yesterday = new Date(today);
-                    yesterday.setDate(today.getDate() - 1);
-                    const yesterdayString = yesterday.toISOString().split('T')[0];
-
-                    const yesterdayFinalBalances = await calculateFinalBalances(yesterdayString);
+                    // Saldo otomatis mengikuti snapshot terakhir dan transaksi setelahnya.
+                    const openingBalances = await calculateOpeningBalances(todayString);
                     
                     formContainer.innerHTML = '';
                     for (const [key, name] of Object.entries(ACCOUNTS)) {
-                        const value = yesterdayFinalBalances[key] || 0;
+                        const value = openingBalances[key] || 0;
                         formContainer.innerHTML += `
                             <div>
                                 <label for="initial-${key}" class="block text-sm font-medium text-slate-600 mb-1">${name}</label>
@@ -805,7 +829,7 @@
 
             transactionForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                if (!await getData(BALANCE_STORE_NAME, new Date().toISOString().split('T')[0])) { alert('Atur saldo awal hari ini dulu!'); return; }
+                if ((await getAllData(BALANCE_STORE_NAME)).length === 0) { alert('Atur saldo pembuka pertama kali dulu!'); return; }
 
                 const category = categorySelect.value;
                 const subCategory = subCategorySelect.value;
